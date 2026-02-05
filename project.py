@@ -3,6 +3,9 @@ from flow import FlowProject
 import datetime
 from ase.io import read
 import numpy as np
+import metatensor
+from featomic.calculators import SoapPowerSpectrum, SphericalExpansionByPair
+from anisoap.representations import EllipsoidalDensityProjection
 
 class Project(FlowProject):
     pass 
@@ -49,7 +52,6 @@ def calculate_anisoap(job):
             "basis_rcond": 1e-8,
             "basis_tol": 1e-4,
         }
-        from anisoap.representations import EllipsoidalDensityProjection
         calculator = EllipsoidalDensityProjection(**AniSOAP_HYPERS)
         mvg_coeffs = calculator.transform(frames)
         from anisoap.utils.metatensor_utils import (
@@ -57,7 +59,6 @@ def calculate_anisoap(job):
             cg_combine,
             standardize_keys,
         )
-        import metatensor
 
         mvg_nu1 = standardize_keys(mvg_coeffs)  # standardize the metadata naming schemes
         # Create an object that stores Clebsch-Gordan coefficients for a certain lmax:
@@ -78,8 +79,6 @@ def calculate_anisoap(job):
         lmax=4
         nmax=6
 
-        from featomic.calculators import SoapPowerSpectrum
-        import metatensor
         HYPER_PARAMETERS = {
             "cutoff": {
                 "radius": 5.0,
@@ -99,6 +98,48 @@ def calculate_anisoap(job):
         calculator = SoapPowerSpectrum(**HYPER_PARAMETERS)
         descriptor = calculator.compute(frames, gradients=['positions'])
         metatensor.save(job.fn("rep.mts"), descriptor)
+
+    elif job.sp.rep_type == 'anisoap_pef':
+        lmax=4
+        nmax=5
+        AniSOAP_HYPERS = {
+            "max_angular": lmax,
+            "max_radial": nmax,
+            "radial_basis_name": "gto",
+            "rotation_type": "quaternion",
+            "rotation_key": "c_q",
+            "cutoff_radius": 7.0,
+            "radial_gaussian_width": 1.5,
+            "basis_rcond": 1e-8,
+            "basis_tol": 1e-4,
+        }
+        calculator = EllipsoidalDensityProjection(**AniSOAP_HYPERS)
+        mvg_coeffs = calculator.transform(frames[:4], return_pef=True)
+        metatensor.save(job.fn("rep.mts"), mvg_coeffs)
+
+    elif job.sp.rep_type == 'soap_sbp':
+        lmax=4
+        nmax=6
+
+        HYPER_PARAMETERS = {
+            "cutoff": {
+                "radius": 5.0,
+                "smoothing": {"type": "ShiftedCosine", "width": 0.5},
+            },
+            "density": {
+                "type": "Gaussian",
+                "width": 0.3,
+            },
+            "basis": {
+                "type": "TensorProduct",
+                "max_angular": lmax,
+                "radial": {"type": "Gto", "max_radial": nmax},
+            },
+        }
+
+        calculator = SphericalExpansionByPair(**HYPER_PARAMETERS)
+        descriptor = calculator.compute(frames[:4], gradients=['positions'])
+        metatensor.save(job.fn("rep.mts"), descriptor) 
 
     
 
